@@ -644,6 +644,8 @@ func (cs *csms) handleIncomingRequest(chargingStationID string, request ocpp.Req
 			response, err = cs.diagnosticsHandler.OnNotifyEvent(chargingStationID, request.(*diagnostics.NotifyEventRequest))
 		case diagnostics.NotifyMonitoringReportFeatureName:
 			response, err = cs.diagnosticsHandler.OnNotifyMonitoringReport(chargingStationID, request.(*diagnostics.NotifyMonitoringReportRequest))
+		case provisioning.NotifyReportFeatureName:
+			response, err = cs.provisioningHandler.OnNotifyReport(chargingStationID, request.(*provisioning.NotifyReportRequest))
 		default:
 			cs.notSupportedError(chargingStationID, requestId, action)
 			return
