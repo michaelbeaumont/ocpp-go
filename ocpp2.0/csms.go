@@ -2,6 +2,7 @@ package ocpp2
 
 import (
 	"fmt"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp"
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0/authorization"
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0/availability"
@@ -405,6 +406,21 @@ func (cs *csms) PublishFirmware(clientId string, callback func(*firmware.Publish
 	return cs.SendRequestAsync(clientId, request, genericCallback)
 }
 
+func (cs *csms) RequestStartTransaction(clientId string, callback func(*remotecontrol.RequestStartTransactionResponse, error), remoteStartID int, IdToken types.IdTokenType, props ...func(request *remotecontrol.RequestStartTransactionRequest)) error {
+	request := remotecontrol.NewRequestStartTransactionRequest(remoteStartID, IdToken)
+	for _, fn := range props {
+		fn(request)
+	}
+	genericCallback := func(response ocpp.Response, protoError error) {
+		if response != nil {
+			callback(response.(*remotecontrol.RequestStartTransactionResponse), protoError)
+		} else {
+			callback(nil, protoError)
+		}
+	}
+	return cs.SendRequestAsync(clientId, request, genericCallback)
+}
+
 func (cs *csms) SetSecurityHandler(handler security.CSMSHandler) {
 	cs.securityHandler = handler
 }
@@ -506,7 +522,8 @@ func (cs *csms) SendRequestAsync(clientId string, request ocpp.Request, callback
 		transactions.GetTransactionStatusFeatureName,
 		provisioning.GetVariablesFeatureName,
 		iso15118.InstallCertificateFeatureName,
-		firmware.PublishFirmwareFeatureName:
+		firmware.PublishFirmwareFeatureName,
+		remotecontrol.RequestStartTransactionFeatureName:
 		break
 	default:
 		return fmt.Errorf("unsupported action %v on CSMS, cannot send request", featureName)

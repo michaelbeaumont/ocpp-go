@@ -2,6 +2,9 @@ package ocpp2_test
 
 import (
 	"fmt"
+	"reflect"
+	"testing"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp"
 	ocpp2 "github.com/lorenzodonini/ocpp-go/ocpp2.0"
 	"github.com/lorenzodonini/ocpp-go/ocpp2.0/authorization"
@@ -28,8 +31,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
-	"reflect"
-	"testing"
 )
 
 // ---------------------- MOCK WEBSOCKET ----------------------
@@ -543,6 +544,12 @@ type MockCSMSMeterHandler struct {
 
 type MockChargingStationRemoteControlHandler struct {
 	mock.Mock
+}
+
+func (handler MockChargingStationRemoteControlHandler) OnRequestStartTransaction(request *remotecontrol.RequestStartTransactionRequest) (response *remotecontrol.RequestStartTransactionResponse, err error) {
+	args := handler.MethodCalled("OnRequestStartTransaction", request)
+	conf := args.Get(0).(*remotecontrol.RequestStartTransactionResponse)
+	return conf, args.Error(1)
 }
 
 // ---------------------- MOCK CSMS REMOTE CONTROL HANDLER ----------------------
