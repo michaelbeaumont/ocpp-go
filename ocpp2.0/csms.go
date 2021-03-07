@@ -421,6 +421,21 @@ func (cs *csms) RequestStartTransaction(clientId string, callback func(*remoteco
 	return cs.SendRequestAsync(clientId, request, genericCallback)
 }
 
+func (cs *csms) RequestStopTransaction(clientId string, callback func(*remotecontrol.RequestStopTransactionResponse, error), transactionID string, props ...func(request *remotecontrol.RequestStopTransactionRequest)) error {
+	request := remotecontrol.NewRequestStopTransactionRequest(transactionID)
+	for _, fn := range props {
+		fn(request)
+	}
+	genericCallback := func(response ocpp.Response, protoError error) {
+		if response != nil {
+			callback(response.(*remotecontrol.RequestStopTransactionResponse), protoError)
+		} else {
+			callback(nil, protoError)
+		}
+	}
+	return cs.SendRequestAsync(clientId, request, genericCallback)
+}
+
 func (cs *csms) SetSecurityHandler(handler security.CSMSHandler) {
 	cs.securityHandler = handler
 }
@@ -523,7 +538,8 @@ func (cs *csms) SendRequestAsync(clientId string, request ocpp.Request, callback
 		provisioning.GetVariablesFeatureName,
 		iso15118.InstallCertificateFeatureName,
 		firmware.PublishFirmwareFeatureName,
-		remotecontrol.RequestStartTransactionFeatureName:
+		remotecontrol.RequestStartTransactionFeatureName,
+		remotecontrol.RequestStopTransactionFeatureName:
 		break
 	default:
 		return fmt.Errorf("unsupported action %v on CSMS, cannot send request", featureName)
