@@ -320,6 +320,19 @@ func (cs *chargingStation) ReservationStatusUpdate(reservationID int, status res
 	}
 }
 
+func (cs *chargingStation) SecurityEventNotification(typ string, timestamp *types.DateTime, props ...func(request *security.SecurityEventNotificationRequest)) (*security.SecurityEventNotificationResponse, error) {
+	request := security.NewSecurityEventNotificationRequest(typ, timestamp)
+	for _, fn := range props {
+		fn(request)
+	}
+	response, err := cs.SendRequest(request)
+	if err != nil {
+		return nil, err
+	} else {
+		return response.(*security.SecurityEventNotificationResponse), err
+	}
+}
+
 func (cs *chargingStation) SetSecurityHandler(handler security.ChargingStationHandler) {
 	cs.securityHandler = handler
 }
@@ -428,7 +441,8 @@ func (cs *chargingStation) SendRequestAsync(request ocpp.Request, callback func(
 		provisioning.NotifyReportFeatureName,
 		firmware.PublishFirmwareStatusNotificationFeatureName,
 		smartcharging.ReportChargingProfilesFeatureName,
-		reservation.ReservationStatusUpdateFeatureName:
+		reservation.ReservationStatusUpdateFeatureName,
+		security.SecurityEventNotificationFeatureName:
 		break
 	default:
 		return fmt.Errorf("unsupported action %v on charging station, cannot send request", featureName)

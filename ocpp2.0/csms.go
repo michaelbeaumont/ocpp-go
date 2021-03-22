@@ -755,6 +755,8 @@ func (cs *csms) handleIncomingRequest(chargingStationID string, request ocpp.Req
 			response, err = cs.smartChargingHandler.OnReportChargingProfiles(chargingStationID, request.(*smartcharging.ReportChargingProfilesRequest))
 		case reservation.ReservationStatusUpdateFeatureName:
 			response, err = cs.reservationHandler.OnReservationStatusUpdate(chargingStationID, request.(*reservation.ReservationStatusUpdateRequest))
+		case security.SecurityEventNotificationFeatureName:
+			response, err = cs.securityHandler.OnSecurityEventNotification(chargingStationID, request.(*security.SecurityEventNotificationRequest))
 		default:
 			cs.notSupportedError(chargingStationID, requestId, action)
 			return
