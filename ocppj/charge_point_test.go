@@ -4,14 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"sync"
+	"time"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp"
 	"github.com/lorenzodonini/ocpp-go/ocppj"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"strconv"
-	"sync"
-	"time"
 )
 
 // ----------------- Start tests -----------------
@@ -112,7 +113,7 @@ func (suite *OcppJTestSuite) TestChargePointSendRequestFailed() {
 		require.False(t, suite.clientRequestQueue.IsEmpty())
 		req := suite.clientRequestQueue.Peek().(ocppj.RequestBundle)
 		callID = req.Call.GetUniqueId()
-		_, ok := suite.chargePoint.PendingRequestState.GetPendingRequest(callID)
+		_, ok := suite.chargePoint.RequestState.GetPendingRequest(callID)
 		// Before anything is returned, the request must still be pending
 		assert.True(t, ok)
 	})
@@ -123,7 +124,7 @@ func (suite *OcppJTestSuite) TestChargePointSendRequestFailed() {
 	assert.Nil(t, err)
 	// Assert that pending request was removed
 	time.Sleep(500 * time.Millisecond)
-	_, ok := suite.chargePoint.PendingRequestState.GetPendingRequest(callID)
+	_, ok := suite.chargePoint.RequestState.GetPendingRequest(callID)
 	assert.False(t, ok)
 }
 
@@ -227,7 +228,7 @@ func (suite *OcppJTestSuite) TestChargePointCallResultHandler() {
 		assert.NotNil(t, confirmation)
 	})
 	suite.mockClient.On("Start", mock.AnythingOfType("string")).Return(nil)
-	suite.chargePoint.PendingRequestState.AddPendingRequest(mockUniqueId, mockRequest) // Manually add a pending request, so that response is not rejected
+	suite.chargePoint.RequestState.AddPendingRequest(mockUniqueId, mockRequest) // Manually add a pending request, so that response is not rejected
 	err := suite.chargePoint.Start("somePath")
 	assert.Nil(t, err)
 	// Simulate central system message
@@ -253,7 +254,7 @@ func (suite *OcppJTestSuite) TestChargePointCallErrorHandler() {
 		assert.Equal(t, mockErrorDetails, details)
 	})
 	suite.mockClient.On("Start", mock.AnythingOfType("string")).Return(nil)
-	suite.chargePoint.PendingRequestState.AddPendingRequest(mockUniqueId, mockRequest) // Manually add a pending request, so that response is not rejected
+	suite.chargePoint.RequestState.AddPendingRequest(mockUniqueId, mockRequest) // Manually add a pending request, so that response is not rejected
 	err := suite.chargePoint.Start("someUrl")
 	assert.Nil(t, err)
 	// Simulate central system message
@@ -381,7 +382,7 @@ func (suite *OcppJTestSuite) TestClientRequestFlow() {
 	suite.mockClient.On("Start", mock.AnythingOfType("string")).Return(nil)
 	suite.mockClient.On("Write", mock.Anything).Run(func(args mock.Arguments) {
 		data := args.Get(0).([]byte)
-		call := ParseCall(&suite.chargePoint.Endpoint, string(data), t)
+		call := ParseCall(&suite.chargePoint.Endpoint, suite.chargePoint.RequestState, string(data), t)
 		require.NotNil(t, call)
 		sendResponseTrigger <- call
 	}).Return(nil)
@@ -463,7 +464,7 @@ func (suite *OcppJTestSuite) TestClientDisconnected() {
 	suite.mockClient.On("Write", mock.Anything).Run(func(args mock.Arguments) {
 		sentMessages += 1
 		data := args.Get(0).([]byte)
-		call := ParseCall(&suite.chargePoint.Endpoint, string(data), t)
+		call := ParseCall(&suite.chargePoint.Endpoint, suite.chargePoint.RequestState, string(data), t)
 		require.NotNil(t, call)
 		writeC <- call
 	}).Return(nil)
@@ -526,7 +527,7 @@ func (suite *OcppJTestSuite) TestClientReconnected() {
 	suite.mockClient.On("Write", mock.Anything).Run(func(args mock.Arguments) {
 		sentMessages += 1
 		data := args.Get(0).([]byte)
-		call := ParseCall(&suite.chargePoint.Endpoint, string(data), t)
+		call := ParseCall(&suite.chargePoint.Endpoint, suite.chargePoint.RequestState, string(data), t)
 		require.NotNil(t, call)
 		writeC <- call
 	}).Return(nil)
@@ -551,8 +552,7 @@ func (suite *OcppJTestSuite) TestClientReconnected() {
 		}
 	}()
 	// Get the pending request state struct
-	state, ok := suite.clientDispatcher.(ocppj.PendingRequestState)
-	require.True(t, ok)
+	state := suite.chargePoint.RequestState
 	assert.False(t, state.HasPendingRequest())
 	// Send some messages
 	for i := 0; i < messagesToQueue; i++ {
@@ -592,7 +592,7 @@ func (suite *OcppJTestSuite) TestClientResponseTimeout() {
 	suite.mockClient.On("Start", mock.AnythingOfType("string")).Return(nil)
 	suite.mockClient.On("Write", mock.Anything).Run(func(args mock.Arguments) {
 		data := args.Get(0).([]byte)
-		call := ParseCall(&suite.chargePoint.Endpoint, string(data), t)
+		call := ParseCall(&suite.chargePoint.Endpoint, suite.chargePoint.RequestState, string(data), t)
 		require.NotNil(t, call)
 		requestID = call.UniqueId
 	}).Return(nil)
@@ -612,8 +612,7 @@ func (suite *OcppJTestSuite) TestClientResponseTimeout() {
 	require.NoError(t, err)
 	// Wait for request to be enqueued, then check state
 	time.Sleep(50 * time.Millisecond)
-	state, ok := suite.clientDispatcher.(ocppj.PendingRequestState)
-	require.True(t, ok)
+	state := suite.chargePoint.RequestState
 	assert.False(t, suite.clientRequestQueue.IsEmpty())
 	assert.True(t, suite.clientDispatcher.IsRunning())
 	assert.Equal(t, 1, suite.clientRequestQueue.Size())
