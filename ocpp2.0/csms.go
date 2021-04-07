@@ -889,6 +889,8 @@ func (cs *csms) handleIncomingRequest(chargingStationID string, request ocpp.Req
 			response, err = cs.securityHandler.OnSignCertificate(chargingStationID, request.(*security.SignCertificateRequest))
 		case availability.StatusNotificationFeatureName:
 			response, err = cs.availabilityHandler.OnStatusNotification(chargingStationID, request.(*availability.StatusNotificationRequest))
+		case transactions.TransactionEventFeatureName:
+			response, err = cs.transactionsHandler.OnTransactionEvent(chargingStationID, request.(*transactions.TransactionEventRequest))
 		default:
 			cs.notSupportedError(chargingStationID, requestId, action)
 			return
