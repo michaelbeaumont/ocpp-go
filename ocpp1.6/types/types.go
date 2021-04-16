@@ -2,8 +2,9 @@
 package types
 
 import (
-	"github.com/lorenzodonini/ocpp-go/ocppj"
 	"gopkg.in/go-playground/validator.v9"
+
+	"github.com/lorenzodonini/ocpp-go/ocppj/ng/protocol"
 )
 
 const (
@@ -314,7 +315,7 @@ type MeterValue struct {
 }
 
 // Initialize validator
-var Validate = ocppj.Validate
+var Validate = protocol.Validate
 
 func init() {
 	_ = Validate.RegisterValidation("authorizationStatus", isValidAuthorizationStatus)
