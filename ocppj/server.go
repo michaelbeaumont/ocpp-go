@@ -12,14 +12,19 @@ import (
 type Server struct {
 	Endpoint
 	server                    ws.WsServer
-	newClientHandler          func(clientID string)
-	disconnectedClientHandler func(clientID string)
-	requestHandler            func(clientID string, request ocpp.Request, requestId string, action string)
-	responseHandler           func(clientID string, response ocpp.Response, requestId string)
-	errorHandler              func(clientID string, err *ocpp.Error, details interface{})
+	newClientHandler          ClientHandler
+	disconnectedClientHandler ClientHandler
+	requestHandler            RequestHandler
+	responseHandler           ResponseHandler
+	errorHandler              ErrorHandler
 	dispatcher                ServerDispatcher
 	RequestState              ServerState
 }
+
+type ClientHandler func(client ws.Channel)
+type RequestHandler func(client ws.Channel, request ocpp.Request, requestId string, action string)
+type ResponseHandler func(client ws.Channel, response ocpp.Response, requestId string)
+type ErrorHandler func(client ws.Channel, err *ocpp.Error, details interface{})
 
 // Creates a new Server endpoint.
 // Requires a a websocket server. Optionally a structure for queueing/dispatching requests,
@@ -56,27 +61,27 @@ func NewServer(wsServer ws.WsServer, dispatcher ServerDispatcher, stateHandler S
 }
 
 // Registers a handler for incoming requests.
-func (s *Server) SetRequestHandler(handler func(clientID string, request ocpp.Request, requestId string, action string)) {
+func (s *Server) SetRequestHandler(handler RequestHandler) {
 	s.requestHandler = handler
 }
 
 // Registers a handler for incoming responses.
-func (s *Server) SetResponseHandler(handler func(clientID string, response ocpp.Response, requestId string)) {
+func (s *Server) SetResponseHandler(handler ResponseHandler) {
 	s.responseHandler = handler
 }
 
 // Registers a handler for incoming error messages.
-func (s *Server) SetErrorHandler(handler func(clientID string, err *ocpp.Error, details interface{})) {
+func (s *Server) SetErrorHandler(handler ErrorHandler) {
 	s.errorHandler = handler
 }
 
 // Registers a handler for incoming client connections.
-func (s *Server) SetNewClientHandler(handler func(clientID string)) {
+func (s *Server) SetNewClientHandler(handler ClientHandler) {
 	s.newClientHandler = handler
 }
 
 // Registers a handler for client disconnections.
-func (s *Server) SetDisconnectedClientHandler(handler func(clientID string)) {
+func (s *Server) SetDisconnectedClientHandler(handler ClientHandler) {
 	s.disconnectedClientHandler = handler
 }
 
@@ -210,18 +215,18 @@ func (s *Server) ocppMessageHandler(wsChannel ws.Channel, data []byte) error {
 	switch message.GetMessageTypeId() {
 	case CALL:
 		call := message.(*Call)
-		s.requestHandler(wsChannel.GetID(), call.Payload, call.UniqueId, call.Action)
+		s.requestHandler(wsChannel, call.Payload, call.UniqueId, call.Action)
 	case CALL_RESULT:
 		callResult := message.(*CallResult)
 		s.dispatcher.CompleteRequest(wsChannel.GetID(), callResult.GetUniqueId())
 		if s.responseHandler != nil {
-			s.responseHandler(wsChannel.GetID(), callResult.Payload, callResult.UniqueId)
+			s.responseHandler(wsChannel, callResult.Payload, callResult.UniqueId)
 		}
 	case CALL_ERROR:
 		callError := message.(*CallError)
 		s.dispatcher.CompleteRequest(wsChannel.GetID(), callError.GetUniqueId())
 		if s.errorHandler != nil {
-			s.errorHandler(wsChannel.GetID(), ocpp.NewError(callError.ErrorCode, callError.ErrorDescription, callError.UniqueId), callError.ErrorDetails)
+			s.errorHandler(wsChannel, ocpp.NewError(callError.ErrorCode, callError.ErrorDescription, callError.UniqueId), callError.ErrorDetails)
 		}
 	}
 	return nil
@@ -232,7 +237,7 @@ func (s *Server) onClientConnected(ws ws.Channel) {
 	s.dispatcher.CreateClient(ws.GetID())
 	// Invoke callback
 	if s.newClientHandler != nil {
-		s.newClientHandler(ws.GetID())
+		s.newClientHandler(ws)
 	}
 }
 
@@ -242,6 +247,6 @@ func (s *Server) onClientDisconnected(ws ws.Channel) {
 	s.RequestState.ClearClientPendingRequest(ws.GetID())
 	// Invoke callback
 	if s.disconnectedClientHandler != nil {
-		s.disconnectedClientHandler(ws.GetID())
+		s.disconnectedClientHandler(ws)
 	}
 }
