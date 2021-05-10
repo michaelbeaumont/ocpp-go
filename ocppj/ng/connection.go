@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lorenzodonini/ocpp-go/ocppj"
 	protocol "github.com/lorenzodonini/ocpp-go/ocppj/ng/protocol"
 	ws "github.com/lorenzodonini/ocpp-go/ws/ng"
 )
@@ -99,6 +100,8 @@ func (pending *PendingConnection) Start(
 	outstandingLocalRequests := make(chan outstandingLocalRequest, 1)
 	outstandingLocalRequests <- outstandingLocalRequest{}
 
+	outstandingLocalRespErrors := make(chan map[string]chan<- *protocol.Error)
+
 	waitingOnRemoteResponse := make(chan struct{}, 1)
 
 	writeWebSocket.Go()
@@ -128,6 +131,7 @@ func (pending *PendingConnection) Start(
 			},
 			waitingOnRemoteResponse,
 			outstandingLocalRequests,
+			outstandingLocalRespErrors,
 		)
 	}()
 
@@ -216,6 +220,7 @@ func handleLocalRequests(
 func handleLocalResponse(
 	write ws.WriteOrDropped,
 	outstandingRemoteRequest outstandingRemoteRequest,
+	outstandingLocalRespErrors chan map[string]chan<- *protocol.Error,
 ) {
 	// Wait on the response from local
 	// TODO timeout?
@@ -237,11 +242,33 @@ func handleLocalResponse(
 		}
 	}
 
+	localRespErr := <-outstandingLocalRespErrors
+	localRespErr[outstandingRemoteRequest.id] = result.respErr
+	outstandingLocalRespErrors <- localRespErr
+
 	select {
 	case <-write.Dropped:
 		return
 	case write.Write <- jsonMessage:
 	}
+
+	time.AfterFunc(60*time.Second, func() {
+		// Drop request if it's the request we're expecting
+		// if not well it's been answered!
+		outstandingLocalRespErrs := <-outstandingLocalRespErrors
+
+		outstandingLocalRespErr, ok := outstandingLocalRespErrs[outstandingRemoteRequest.id]
+
+		if ok {
+			outstandingLocalRespErr <- &protocol.Error{
+				Code:        ocppj.InternalError,
+				Description: "timeout",
+			}
+			close(outstandingLocalRespErrors)
+		}
+
+		outstandingLocalRespErrors <- outstandingLocalRespErrs
+	})
 }
 
 // handleRemoteMessages drives reading the websocket connection.
@@ -252,6 +279,7 @@ func handleRemoteMessages(
 	remoteRequests WriteOrDropped,
 	waitingOnRemoteResponse chan struct{},
 	outstandingLocalRequests chan outstandingLocalRequest,
+	outstandingLocalRespErrors chan map[string]chan<- *protocol.Error,
 ) {
 	defer func() {
 		// We are the only sender for these channels
@@ -329,7 +357,7 @@ func handleRemoteMessages(
 			writeWait.Go()
 			go func() {
 				defer writeWait.Done()
-				handleLocalResponse(writeWait.Channel(), outstandingRemoteRequest)
+				handleLocalResponse(writeWait.Channel(), outstandingRemoteRequest, outstandingLocalRespErrors)
 			}()
 
 			select {
@@ -343,7 +371,6 @@ func handleRemoteMessages(
 			}
 
 		case protocol.CALL_RESULT, protocol.CALL_ERROR:
-			fmt.Println(messageType, uniqueID)
 			outstandingReq := <-outstandingLocalRequests
 
 			if outstandingReq.id == "" || outstandingReq.id != uniqueID {
@@ -374,6 +401,43 @@ func handleRemoteMessages(
 				outstandingReq.result <- ResponseResult{resp: response}
 				close(outstandingReq.result)
 			case protocol.CALL_ERROR:
+				outstandingReq := <-outstandingLocalRequests
+
+				var sendAndClose func(*protocol.Error)
+				if outstandingReq.id == "" || outstandingReq.id != uniqueID {
+					outstandingLocalRequests <- outstandingReq
+
+					outstandingLocalRespErrorMap := <-outstandingLocalRespErrors
+					outstandingLocalRespErr, ok := outstandingLocalRespErrorMap[uniqueID]
+					if !ok {
+						outstandingLocalRespErrors <- outstandingLocalRespErrorMap
+						// This means either:
+						//  * we've got an internal inconsistency
+						//  * or the the peer sent a response but
+						//    there are no local, sent requests waiting for a response.
+						//    May be due to a timeout.
+						continue
+					}
+
+					delete(outstandingLocalRespErrorMap, uniqueID)
+					outstandingLocalRespErrors <- outstandingLocalRespErrorMap
+
+					sendAndClose = func(ocppError *protocol.Error) {
+						outstandingLocalRespErr <- ocppError
+						close(outstandingLocalRespErr)
+					}
+				} else {
+					// Allow local to send messages again
+					outstandingLocalRequests <- outstandingLocalRequest{}
+					<-waitingOnRemoteResponse
+
+					sendAndClose = func(ocppError *protocol.Error) {
+						// We don't care if this channel is ever read
+						outstandingReq.result <- ResponseResult{err: ocppError}
+						close(outstandingReq.result)
+					}
+				}
+
 				ocppError, err := endpoint.ParseOcppError(parsedJSON)
 				if err != nil {
 					if ret := handleError(uniqueID, err); ret {
@@ -382,9 +446,8 @@ func handleRemoteMessages(
 					continue
 				}
 
-				// We don't care if this channel is ever read
-				outstandingReq.result <- ResponseResult{err: ocppError}
-				close(outstandingReq.result)
+				sendAndClose(ocppError)
+
 			default:
 				panic("unreachable")
 			}

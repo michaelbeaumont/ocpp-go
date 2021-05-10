@@ -11,8 +11,9 @@ import (
 // ResponseResult can only be accessed using the methods provided and it's
 // guaranteed that exactly one of Response or Err will be non-nil.
 type ResponseResult struct {
-	err  *protocol.Error
-	resp ocpp.Response
+	err     *protocol.Error
+	resp    ocpp.Response
+	respErr chan *protocol.Error
 }
 
 // Response returns the OCPP response, if any.
@@ -23,6 +24,11 @@ func (result *ResponseResult) Response() ocpp.Response {
 // Err returns the error that occurred, if any.
 func (result *ResponseResult) Err() *protocol.Error {
 	return result.err
+}
+
+// RespErr TODO
+func (result *ResponseResult) RespErr() <-chan *protocol.Error {
+	return result.respErr
 }
 
 // NewResponseResult validates the response and returns a ResponseResult if
