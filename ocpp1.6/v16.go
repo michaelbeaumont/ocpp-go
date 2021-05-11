@@ -265,5 +265,6 @@ func NewCentralSystem(endpoint *ocppj.Server, server ws.WsServer) CentralSystem 
 	cs.server.SetRequestHandler(cs.handleIncomingRequest)
 	cs.server.SetResponseHandler(cs.handleIncomingConfirmation)
 	cs.server.SetErrorHandler(cs.handleIncomingError)
+	cs.server.SetTimeoutHandler(cs.handleTimeout)
 	return &cs
 }

@@ -513,6 +513,15 @@ func (cs *centralSystem) handleIncomingRequest(chargePointId string, request ocp
 	}()
 }
 
+func (cs *centralSystem) handleTimeout(chargePointId string, requestId string) {
+	if callback, ok := cs.callbackQueue.Dequeue(chargePointId); ok {
+		callback(nil, fmt.Errorf("timeout"))
+	} else {
+		err := fmt.Errorf("no handler available for timeout from client %s for request %s", chargePointId, requestId)
+		cs.error(err)
+	}
+}
+
 func (cs *centralSystem) handleIncomingConfirmation(chargePointId string, confirmation ocpp.Response, requestId string) {
 	if callback, ok := cs.callbackQueue.Dequeue(chargePointId); ok {
 		callback(confirmation, nil)

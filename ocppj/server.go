@@ -17,6 +17,7 @@ type Server struct {
 	requestHandler            func(clientID string, request ocpp.Request, requestId string, action string)
 	responseHandler           func(clientID string, response ocpp.Response, requestId string)
 	errorHandler              func(clientID string, err *ocpp.Error, details interface{})
+	timeoutHandler            func(clientID string, requestId string)
 	dispatcher                ServerDispatcher
 	RequestState              ServerState
 }
@@ -46,7 +47,6 @@ func NewServer(wsServer ws.WsServer, dispatcher ServerDispatcher, stateHandler S
 	}
 	dispatcher.SetNetworkServer(wsServer)
 	dispatcher.SetPendingRequestState(stateHandler)
-
 	// Create server and add profiles
 	s := Server{Endpoint: Endpoint{}, server: wsServer, RequestState: stateHandler, dispatcher: dispatcher}
 	for _, profile := range profiles {
@@ -58,6 +58,12 @@ func NewServer(wsServer ws.WsServer, dispatcher ServerDispatcher, stateHandler S
 // Registers a handler for incoming requests.
 func (s *Server) SetRequestHandler(handler func(clientID string, request ocpp.Request, requestId string, action string)) {
 	s.requestHandler = handler
+}
+
+func (s *Server) SetTimeoutHandler(handler func(string, string)) {
+	s.dispatcher.SetOnRequestCanceled(func(clientID, callId string, _ string, _ ocpp.Request) {
+		handler(clientID, callId)
+	})
 }
 
 // Registers a handler for incoming responses.
