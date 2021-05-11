@@ -639,8 +639,8 @@ func setupDefaultCSMSHandlers(suite *OcppV2TestSuite, options expectedCSMSOption
 			suite.csms.SetTransactionsHandler(h.(MockChargingStationTransactionHandler))
 		}
 	}
-	suite.csms.SetNewChargingStationHandler(func(chargingStationId string) {
-		assert.Equal(t, options.clientId, chargingStationId)
+	suite.csms.SetNewChargingStationHandler(func(chargingStation ocpp2.ChargingStationConnection) {
+		assert.Equal(t, options.clientId, chargingStation.ID())
 	})
 	suite.mockWsServer.On("Start", mock.AnythingOfType("int"), mock.AnythingOfType("string")).Return(options.startReturnArgument)
 	suite.mockWsServer.On("Write", mock.AnythingOfType("string"), mock.Anything).Return(options.writeReturnArgument).Run(func(args mock.Arguments) {
@@ -773,9 +773,9 @@ func testUnsupportedRequestFromCentralSystem(suite *OcppV2TestSuite, request ocp
 
 	setupDefaultCSMSHandlers(suite, expectedCSMSOptions{clientId: wsId, rawWrittenMessage: []byte(requestJson), forwardWrittenMessage: false})
 	setupDefaultChargingStationHandlers(suite, expectedChargingStationOptions{serverUrl: wsUrl, clientId: wsId, createChannelOnStart: true, channel: channel, rawWrittenMessage: []byte(errorJson), forwardWrittenMessage: true}, handlers...)
-	suite.ocppjServer.SetErrorHandler(func(chargingStationId string, err *ocpp.Error, details interface{}) {
+	suite.ocppjServer.SetErrorHandler(func(channel ws.Channel, err *ocpp.Error, details interface{}) {
 		assert.Equal(t, messageId, err.MessageId)
-		assert.Equal(t, wsId, chargingStationId)
+		assert.Equal(t, wsId, channel.GetID())
 		assert.Equal(t, ocppj.NotSupported, err.Code)
 		assert.Equal(t, errorDescription, err.Description)
 		assert.Nil(t, details)
