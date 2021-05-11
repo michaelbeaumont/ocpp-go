@@ -2,6 +2,8 @@
 package ocpp16
 
 import (
+	"fmt"
+
 	"github.com/gorilla/websocket"
 
 	"github.com/lorenzodonini/ocpp-go/internal/callbackqueue"
@@ -147,6 +149,9 @@ func NewChargePoint(id string, endpoint *ocppj.Client, client ws.WsClient) Charg
 	})
 	cp.client.SetErrorHandler(func(err *ocpp.Error, details interface{}) {
 		cp.errorHandler <- err
+	})
+	cp.client.SetTimeoutHandler(func() {
+		cp.errorHandler <- fmt.Errorf("timeout")
 	})
 	cp.client.SetRequestHandler(cp.handleIncomingRequest)
 	return &cp

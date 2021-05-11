@@ -16,6 +16,7 @@ type Client struct {
 	requestHandler  func(request ocpp.Request, requestId string, action string)
 	responseHandler func(response ocpp.Response, requestId string)
 	errorHandler    func(err *ocpp.Error, details interface{})
+	timeoutHandler  func(clientID string, requestId string)
 	dispatcher      ClientDispatcher
 	RequestState    ClientState
 }
@@ -58,6 +59,12 @@ func (c *Client) SetResponseHandler(handler func(response ocpp.Response, request
 // Registers a handler for incoming error messages.
 func (c *Client) SetErrorHandler(handler func(err *ocpp.Error, details interface{})) {
 	c.errorHandler = handler
+}
+
+func (c *Client) SetTimeoutHandler(handler func()) {
+	c.dispatcher.SetOnRequestCanceled(func(_, _ string, _ ocpp.Request) {
+		handler()
+	})
 }
 
 // Connects to the given serverURL and starts running the I/O loop for the underlying connection.
