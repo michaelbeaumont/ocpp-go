@@ -236,22 +236,15 @@ func (d *DefaultClientDispatcher) dispatchNextRequest() {
 
 func (d *DefaultClientDispatcher) Pause() {
 	d.mutex.Lock()
-	defer d.mutex.Unlock()
-	if !d.timer.Stop() {
-		<-d.timer.C
-	}
-	d.timer.Reset(defaultTimeoutTick)
 	d.paused = true
+	d.mutex.Unlock()
 }
 
 func (d *DefaultClientDispatcher) Resume() {
 	d.mutex.Lock()
 	d.paused = false
 	d.mutex.Unlock()
-	if d.pendingRequestState.HasPendingRequest() {
-		// There is a pending request already. Awaiting response, before dispatching new requests.
-		d.timer.Reset(d.timeout)
-	} else {
+	if !d.pendingRequestState.HasPendingRequest() {
 		// Can dispatch a new request. Notifying message pump.
 		d.readyForDispatch <- true
 	}
